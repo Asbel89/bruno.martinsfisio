@@ -13,11 +13,16 @@ if (menuBtn && nav) {
   });
 }
 
-// Header shadow on scroll
+// Header shadow on scroll (com rAF throttle — evita jank)
 const header = document.getElementById('header');
+let shadowQueued = false;
 window.addEventListener('scroll', () => {
-  if (!header) return;
-  header.style.boxShadow = window.scrollY > 10 ? '0 8px 24px rgba(11,47,45,.08)' : 'none';
+  if (!header || shadowQueued) return;
+  shadowQueued = true;
+  requestAnimationFrame(() => {
+    header.style.boxShadow = window.scrollY > 10 ? '0 8px 24px rgba(11,47,45,.08)' : 'none';
+    shadowQueued = false;
+  });
 }, { passive: true });
 
 // Faixa em loop constante + sincronizada com a rolagem:
@@ -43,6 +48,24 @@ window.addEventListener('scroll', () => {
   let boost = 0;        // impulso extra proporcional à velocidade do scroll
   let lastY = window.scrollY;
   let lastT = performance.now();
+  let running = true;   // pausa quando a faixa sai da tela ou a aba oculta
+  let rafId = 0;
+
+  const marquee = track.closest('.marquee');
+  if ('IntersectionObserver' in window && marquee) {
+    new IntersectionObserver((entries) => {
+      const visible = entries[0].isIntersecting;
+      if (visible && !running) { running = true; lastT = performance.now(); rafId = requestAnimationFrame(frame); }
+      else if (!visible && running) { running = false; cancelAnimationFrame(rafId); }
+    }, { threshold: 0 }).observe(marquee);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && running) { running = false; cancelAnimationFrame(rafId); }
+    else if (!document.hidden && !running && marquee) {
+      const r = marquee.getBoundingClientRect();
+      if (r.bottom > 0 && r.top < innerHeight) { running = true; lastT = performance.now(); rafId = requestAnimationFrame(frame); }
+    }
+  });
 
   window.addEventListener('scroll', () => {
     const y = window.scrollY;
@@ -56,6 +79,7 @@ window.addEventListener('scroll', () => {
   }, { passive: true });
 
   function frame(now) {
+    if (!running) return;
     const dt = Math.min((now - lastT) / 1000, 0.05);
     lastT = now;
 
@@ -75,9 +99,9 @@ window.addEventListener('scroll', () => {
     }
 
     track.style.transform = `translate3d(${x}px, 0, 0)`;
-    requestAnimationFrame(frame);
+    rafId = requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+  rafId = requestAnimationFrame(frame);
 })();
 // Ano dinâmico
 const yearEl = document.getElementById('year');
